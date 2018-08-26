@@ -12,11 +12,10 @@ data class Task(
 
 fun main(args: Array<String>) {
     val objectMapper = ObjectMapper().registerKotlinModule()
-    get("/tasks") { request, response ->
-        val tasks = listOf(
+    get("/tasks", { request, response ->
+        listOf(
             Task(1, "Go shopping.", false),
             Task(2, "Go to work.", true)
         )
-        objectMapper.writeValueAsString(tasks)
-    }
+    }, objectMapper::writeValueAsString)
 }
