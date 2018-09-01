@@ -2,11 +2,18 @@ package todolist
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.fasterxml.jackson.annotation.JsonProperty
 import spark.Spark.get
+import spark.Spark.post
 import spark.Request
 import spark.Response
 import spark.ResponseTransformer
 import spark.Route
+import spark.Spark.halt
+
+data class TaskCreateRequest(
+    @JsonProperty("content", required = true) val content: String
+)
 
 data class Task(
     val id: Long,
@@ -14,12 +21,27 @@ data class Task(
     val done: Boolean
 )
 
-class TaskController {
-    fun index(): Route = Route { request, response ->
-        listOf(
-            Task(1, "Go shopping at 4:00 PM.", false),
-            Task(2, "Go to work at 9:00 AM.", true)
-        )
+inline fun <reified T : Any> ObjectMapper.readValue(src: ByteArray): T? =
+    try {
+        readValue(src, T::class.java)
+    } catch(e: Exception) {
+        null
+    }
+
+class TaskController(
+    private val objectMapper: ObjectMapper,
+    private val taskRepository: TaskRepository
+) {
+    fun index(): Route = Route { req, res ->
+        taskRepository.findAll()
+    }
+
+    fun create(): Route = Route { req, res ->
+        val request: TaskCreateRequest =
+            objectMapper.readValue(req.bodyAsBytes()) ?: throw halt(400)
+        val task = taskRepository.create(request.content)
+        res.status(201)
+        task
     }
 }
 
@@ -29,10 +51,27 @@ class JsonTransformer(private val objectMapper: ObjectMapper) : ResponseTransfor
         objectMapper.writeValueAsString(model)
 }
 
+class TaskRepository {
+    private val tasks: MutableList<Task> = mutableListOf()
+    private val maxId: Long
+        get() = tasks.map(Task::id).max() ?: 0
+
+    fun findAll(): List<Task> = tasks.toList()
+
+    fun create(content: String): Task {
+        val id = maxId + 1
+        val task = Task(id, content, false)
+        tasks += task
+        return task
+    }
+}
+
 fun main(args: Array<String>) {
     val objectMapper = ObjectMapper().registerKotlinModule()
     val jsonTransformer = JsonTransformer(objectMapper)
-    val taskController = TaskController()
+    val taskRepository = TaskRepository()
+    val taskController = TaskController(objectMapper, taskRepository)
 
     get("/tasks", taskController.index(), jsonTransformer)
+    post("/tasks", taskController.create(), jsonTransformer)
 }
