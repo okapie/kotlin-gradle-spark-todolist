@@ -5,6 +5,8 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.fasterxml.jackson.annotation.JsonProperty
 import spark.Spark.get
 import spark.Spark.post
+import spark.Spark.delete
+import spark.Spark.path
 import spark.Request
 import spark.Response
 import spark.ResponseTransformer
@@ -43,6 +45,22 @@ class TaskController(
         res.status(201)
         task
     }
+
+    fun show(): Route = Route { req, res ->
+        req.task ?: throw halt(404)
+    }
+
+    fun destroy(): Route = Route { req, res ->
+        val task = req.task ?: throw halt(404)
+        taskRepository.delete(task)
+        res.status(204)
+    }
+
+    private val Request.task: Task?
+        get() {
+            val id = params("id").toLongOrNull()
+            return id?.let(taskRepository::findById)
+        }
 }
 
 class JsonTransformer(private val objectMapper: ObjectMapper) : ResponseTransformer
@@ -64,6 +82,12 @@ class TaskRepository {
         tasks += task
         return task
     }
+
+    fun findById(id: Long): Task? = tasks.find { it.id == id }
+
+    fun delete(task: Task) {
+        tasks.removeIf { (id) -> id == task.id }
+    }
 }
 
 fun main(args: Array<String>) {
@@ -72,6 +96,10 @@ fun main(args: Array<String>) {
     val taskRepository = TaskRepository()
     val taskController = TaskController(objectMapper, taskRepository)
 
-    get("/tasks", taskController.index(), jsonTransformer)
-    post("/tasks", taskController.create(), jsonTransformer)
+    path("/tasks") {
+        get("", taskController.index(), jsonTransformer)
+        post("", taskController.create(), jsonTransformer)
+        get("/:id", taskController.show(), jsonTransformer)
+        delete("/:id", taskController.destroy(), jsonTransformer)
+    }
 }
