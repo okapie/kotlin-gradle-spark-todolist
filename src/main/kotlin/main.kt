@@ -5,6 +5,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.fasterxml.jackson.annotation.JsonProperty
 import spark.Spark.get
 import spark.Spark.post
+import spark.Spark.patch
 import spark.Spark.delete
 import spark.Spark.path
 import spark.Request
@@ -56,6 +57,18 @@ class TaskController(
         res.status(204)
     }
 
+    fun update(): Route = Route { req, res ->
+        val request: TaskUpdateRequest =
+            objectMapper.readValue(req.bodyAsBytes()) ?: throw halt(400)
+        val task = req.task ?: throw halt(404)
+        val newTask = task.copy(
+            content = request.content ?: task.content,
+            done = request.done ?: task.done
+        )
+        taskRepository.update(newTask)
+        res.status(204)
+    }
+
     private val Request.task: Task?
         get() {
             val id = params("id").toLongOrNull()
@@ -88,7 +101,17 @@ class TaskRepository {
     fun delete(task: Task) {
         tasks.removeIf { (id) -> id == task.id }
     }
+
+    fun update(task: Task) {
+        tasks.replaceAll { t ->
+            if (t.id == task.id) task
+            else t
+        }
+    }
 }
+
+data class TaskUpdateRequest(@JsonProperty("content") val content: String?,
+                             @JsonProperty("done") val done: Boolean?)
 
 fun main(args: Array<String>) {
     val objectMapper = ObjectMapper().registerKotlinModule()
@@ -100,6 +123,7 @@ fun main(args: Array<String>) {
         get("", taskController.index(), jsonTransformer)
         post("", taskController.create(), jsonTransformer)
         get("/:id", taskController.show(), jsonTransformer)
+        patch("/:id", taskController.update(), jsonTransformer)
         delete("/:id", taskController.destroy(), jsonTransformer)
     }
 }
